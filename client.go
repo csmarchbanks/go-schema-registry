@@ -11,47 +11,40 @@ import (
 	"github.com/karrick/goavro"
 )
 
-type SchemaRegistryClient interface {
-	GetSchema(id int) (*goavro.Codec, error)
-	CreateSchema(subject string, codec *goavro.Codec) (int, error)
-	GetSubjects() ([]string, error)
-	GetVersions(subject string) ([]int, error)
-	GetLatestSubject(subject string) ([]int, error)
-	GetSubject(subject string, id int) ([]int, error)
-	DeleteSubject(subject string) error
-}
-
-type HttpClient struct {
+// HTTPClient is a basic http client to interact with schema registry
+type HTTPClient struct {
 	SchemaRegistryConnect string
 	httpClient            *http.Client
 }
 
-type Schema struct {
+type schemaResponse struct {
 	Schema string `json:"schema"`
 }
 
 type idResponse struct {
-	Id int `json:"id"`
+	ID int `json:"id"`
 }
 
 const (
-	SCHEMA_BY_ID       = "/schemas/ids/%d"
-	SUBJECTS           = "/subjects"
-	SUBJECT_VERSIONS   = "/subjects/%s/versions"
-	DELETE_SUBJECT     = "/subjects/%s"
-	SUBJECT_BY_VERSION = "/subjects/%s/versions/%v"
+	schemaByID       = "/schemas/ids/%d"
+	subjects         = "/subjects"
+	subjectVersions  = "/subjects/%s/versions"
+	deleteSubject    = "/subjects/%s"
+	subjectByVersion = "/subjects/%s/versions/%v"
 
-	LATEST_VERSION = "latest"
+	latestVersion = "latest"
 
-	CONTENT_TYPE = "application/vnd.schemaregistry.v1+json"
+	contentType = "application/vnd.schemaregistry.v1+json"
 )
 
-func NewHttpClient(connect string) HttpClient {
-	return HttpClient{connect, http.DefaultClient}
+// NewHTTPClient creates a client to talk with the schema registry at the connect string
+func NewHTTPClient(connect string) HTTPClient {
+	return HTTPClient{connect, http.DefaultClient}
 }
 
-func (client *HttpClient) GetSchema(id int) (*goavro.Codec, error) {
-	resp, err := client.httpCall("GET", fmt.Sprintf(SCHEMA_BY_ID, id), nil)
+// GetSchema returns a goavro.Codec by unique id
+func (client *HTTPClient) GetSchema(id int) (*goavro.Codec, error) {
+	resp, err := client.httpCall("GET", fmt.Sprintf(schemaByID, id), nil)
 	if nil != err {
 		return nil, err
 	}
@@ -62,8 +55,9 @@ func (client *HttpClient) GetSchema(id int) (*goavro.Codec, error) {
 	return goavro.NewCodec(schema.Schema)
 }
 
-func (client *HttpClient) GetSubjects() ([]string, error) {
-	resp, err := client.httpCall("GET", SUBJECTS, nil)
+// GetSubjects returns a list of all subjects in the schema registry
+func (client *HTTPClient) GetSubjects() ([]string, error) {
+	resp, err := client.httpCall("GET", subjects, nil)
 	if nil != err {
 		return []string{}, err
 	}
@@ -72,8 +66,9 @@ func (client *HttpClient) GetSubjects() ([]string, error) {
 	return result, err
 }
 
-func (client *HttpClient) GetVersions(subject string) ([]int, error) {
-	resp, err := client.httpCall("GET", SUBJECT_VERSIONS, nil)
+// GetVersions returns a list of the versions of a subject
+func (client *HTTPClient) GetVersions(subject string) ([]int, error) {
+	resp, err := client.httpCall("GET", subjectVersions, nil)
 	if nil != err {
 		return []int{}, err
 	}
@@ -82,8 +77,9 @@ func (client *HttpClient) GetVersions(subject string) ([]int, error) {
 	return result, err
 }
 
-func (client *HttpClient) GetSchemaByVersion(subject string, version int) (*goavro.Codec, error) {
-	resp, err := client.httpCall("GET", fmt.Sprintf(SUBJECT_BY_VERSION, id), nil)
+// GetSchemaByVersion returns a goavro.Codec for the version of the subject
+func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goavro.Codec, error) {
+	resp, err := client.httpCall("GET", fmt.Sprintf(subjectByVersion, subject, version), nil)
 	if nil != err {
 		return nil, err
 	}
@@ -94,24 +90,26 @@ func (client *HttpClient) GetSchemaByVersion(subject string, version int) (*goav
 	return goavro.NewCodec(schema.Schema)
 }
 
-func (client *HttpClient) CreateSubject(subject string, codec *goavro.Codec) (int, error) {
-	schema := Schema{codec.Schema()}
+// CreateSubject adds a schema to the subject
+func (client *HTTPClient) CreateSubject(subject string, codec *goavro.Codec) (int, error) {
+	schema := schemaResponse{codec.Schema()}
 	json, err := json.Marshal(schema)
 	if err != nil {
 		return 0, err
 	}
 	payload := bytes.NewBuffer(json)
-	resp, err := client.httpCall("POST", fmt.Sprintf(SUBJECT_VERSIONS, subject), payload)
+	resp, err := client.httpCall("POST", fmt.Sprintf(subjectVersions, subject), payload)
 	if err != nil {
 		return 0, err
 	} else if !ok(resp) {
 		return 0, fmt.Errorf("non-ok return code found: %s", resp.Status)
 	}
-	return parseId(resp)
+	return parseID(resp)
 }
 
-func (client *HttpClient) DeleteSubject(subject string) error {
-	_, err := client.httpCall("DELETE", fmt.Sprintf(DELETE_SUBJECT, subject), nil)
+// DeleteSubject deletes a subject. It should only be used in development
+func (client *HTTPClient) DeleteSubject(subject string) error {
+	_, err := client.httpCall("DELETE", fmt.Sprintf(deleteSubject, subject), nil)
 	return err
 }
 
@@ -119,27 +117,27 @@ func ok(resp *http.Response) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }
 
-func parseSchema(resp *http.Response) (*Schema, error) {
-	var schema = new(Schema)
+func parseSchema(resp *http.Response) (*schemaResponse, error) {
+	var schema = new(schemaResponse)
 	err := json.NewDecoder(resp.Body).Decode(&schema)
 	return schema, err
 }
 
-func parseId(resp *http.Response) (int, error) {
+func parseID(resp *http.Response) (int, error) {
 	var id = new(idResponse)
 	str, _ := ioutil.ReadAll(resp.Body)
 	err := json.Unmarshal(str, id)
-	return id.Id, err
+	return id.ID, err
 }
 
-func (client HttpClient) httpCall(method, uri string, payload io.Reader) (*http.Response, error) {
+func (client HTTPClient) httpCall(method, uri string, payload io.Reader) (*http.Response, error) {
 	url := fmt.Sprintf("%s%s", client.SchemaRegistryConnect, uri)
 	req, err := http.NewRequest(method, url, payload)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", CONTENT_TYPE)
-	req.Header.Set("Accept", CONTENT_TYPE)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", contentType)
 	resp, err := client.httpClient.Do(req)
 	return resp, err
 }
