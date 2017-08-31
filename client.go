@@ -62,7 +62,39 @@ func (client *HttpClient) GetSchema(id int) (*goavro.Codec, error) {
 	return goavro.NewCodec(schema.Schema)
 }
 
-func (client *HttpClient) CreateSchema(subject string, codec *goavro.Codec) (int, error) {
+func (client *HttpClient) GetSubjects() ([]string, error) {
+	resp, err := client.httpCall("GET", SUBJECTS, nil)
+	if nil != err {
+		return []string{}, err
+	}
+	var result = []string{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return result, err
+}
+
+func (client *HttpClient) GetVersions(subject string) ([]int, error) {
+	resp, err := client.httpCall("GET", SUBJECT_VERSIONS, nil)
+	if nil != err {
+		return []int{}, err
+	}
+	var result = []int{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return result, err
+}
+
+func (client *HttpClient) GetSchemaByVersion(subject string, version int) (*goavro.Codec, error) {
+	resp, err := client.httpCall("GET", fmt.Sprintf(SUBJECT_BY_VERSION, id), nil)
+	if nil != err {
+		return nil, err
+	}
+	schema, err := parseSchema(resp)
+	if nil != err {
+		return nil, err
+	}
+	return goavro.NewCodec(schema.Schema)
+}
+
+func (client *HttpClient) CreateSubject(subject string, codec *goavro.Codec) (int, error) {
 	schema := Schema{codec.Schema()}
 	json, err := json.Marshal(schema)
 	if err != nil {
@@ -76,6 +108,11 @@ func (client *HttpClient) CreateSchema(subject string, codec *goavro.Codec) (int
 		return 0, fmt.Errorf("non-ok return code found: %s", resp.Status)
 	}
 	return parseId(resp)
+}
+
+func (client *HttpClient) DeleteSubject(subject string) error {
+	_, err := client.httpCall("DELETE", fmt.Sprintf(DELETE_SUBJECT, subject), nil)
+	return err
 }
 
 func ok(resp *http.Response) bool {
