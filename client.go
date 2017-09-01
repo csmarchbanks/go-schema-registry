@@ -21,6 +21,13 @@ type schemaResponse struct {
 	Schema string `json:"schema"`
 }
 
+type schemaVersionResponse struct {
+	Subject string `json:"subject"`
+	Version int    `json:"version"`
+	Schema  string `json:"schema"`
+	ID      int    `json:"id"`
+}
+
 type idResponse struct {
 	ID int `json:"id"`
 }
@@ -68,7 +75,7 @@ func (client *HTTPClient) GetSubjects() ([]string, error) {
 
 // GetVersions returns a list of the versions of a subject
 func (client *HTTPClient) GetVersions(subject string) ([]int, error) {
-	resp, err := client.httpCall("GET", subjectVersions, nil)
+	resp, err := client.httpCall("GET", fmt.Sprintf(subjectVersions, subject), nil)
 	if nil != err {
 		return []int{}, err
 	}
@@ -83,10 +90,13 @@ func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goav
 	if nil != err {
 		return nil, err
 	}
-	schema, err := parseSchema(resp)
+	bodyStr, _ := ioutil.ReadAll(resp.Body)
+	var schema = new(schemaVersionResponse)
+	err = json.Unmarshal(bodyStr, schema)
 	if nil != err {
 		return nil, err
 	}
+
 	return goavro.NewCodec(schema.Schema)
 }
 

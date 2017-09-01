@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/karrick/goavro"
@@ -16,8 +17,8 @@ func contains(array []string, value string) bool {
 	return false
 }
 
-func TestCreateSubject(t *testing.T) {
-	codec, err := goavro.NewCodec(`
+func createTestCodec() (*goavro.Codec, error) {
+	return goavro.NewCodec(`
         {
           "type": "record",
           "name": "test",
@@ -25,6 +26,10 @@ func TestCreateSubject(t *testing.T) {
             {"name": "val", "type": "int"}
           ]
         }`)
+}
+
+func TestCreateSubject(t *testing.T) {
+	codec, err := createTestCodec()
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
@@ -45,25 +50,11 @@ func TestCreateSubject(t *testing.T) {
 	if nil == schema {
 		t.Errorf("Something went wrong")
 	}
-	err = httpClient.DeleteSubject(schemaName)
-	if nil != err {
-		t.Errorf("Error deleting subject: %v", err)
-	}
-	subjects, err = httpClient.GetSubjects()
-	if contains(subjects, schemaName) {
-		t.Errorf("Did not successfully delete subject")
-	}
+	httpClient.DeleteSubject(schemaName)
 }
 
 func TestDeleteSubject(t *testing.T) {
-	codec, err := goavro.NewCodec(`
-        {
-          "type": "record",
-          "name": "test",
-          "fields" : [
-            {"name": "val", "type": "int"}
-          ]
-        }`)
+	codec, err := createTestCodec()
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
@@ -85,4 +76,49 @@ func TestDeleteSubject(t *testing.T) {
 	if contains(subjects, schemaName) {
 		t.Errorf("Did not successfully delete subject")
 	}
+	httpClient.DeleteSubject(schemaName)
+}
+
+func verifyCodecs(t *testing.T, codec1, codec2 *goavro.Codec) {
+	t.Helper()
+	if codec1.Schema() != codec2.Schema() {
+		t.Fatalf("Schema does not match, expected: %s, returned schema: %s", codec1.Schema(), codec2.Schema())
+	}
+}
+
+func TestVersions(t *testing.T) {
+	codec, _ := createTestCodec()
+	httpClient := NewHTTPClient("http://localhost:8081")
+	schemaName := string(uuid.NewV4().String())
+	httpClient.CreateSubject(schemaName, codec)
+	schemaString := `
+        {
+          "type": "record",
+          "name": "test",
+          "fields" : [
+            {"name": "val", "type": "int"},
+			{"name": "val2", "type": ["string", "null"], "default": "null"} 
+          ]
+        }`
+	codec2, _ := goavro.NewCodec(schemaString)
+	httpClient.CreateSubject(schemaName, codec2)
+	versions, err := httpClient.GetVersions(schemaName)
+	if err != nil {
+		t.Fatalf("Error getting versions: %v", err)
+	}
+	if !reflect.DeepEqual(versions, []int{1, 2}) {
+		t.Fatalf("Versions were not 1 and 2, got: %v", versions)
+	}
+	responseCodec, err := httpClient.GetSchemaByVersion(schemaName, 1)
+	if err != nil {
+		t.Fatalf("Error getting schema by version: %v", err)
+	}
+	verifyCodecs(t, codec, responseCodec)
+	responseCodec, err = httpClient.GetSchemaByVersion(schemaName, 2)
+	if err != nil {
+		t.Fatalf("Error getting schema by version: %v", err)
+	}
+	verifyCodecs(t, codec2, responseCodec)
+
+	httpClient.DeleteSubject(schemaName)
 }
