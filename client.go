@@ -90,9 +90,6 @@ func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goav
 	if nil != err {
 		return nil, err
 	}
-	if !ok(resp) {
-		return nil, fmt.Errorf("Non ok response - %d", resp.StatusCode)
-	}
 	bodyStr, _ := ioutil.ReadAll(resp.Body)
 	var schema = new(schemaVersionResponse)
 	err = json.Unmarshal(bodyStr, schema)
@@ -114,8 +111,6 @@ func (client *HTTPClient) CreateSubject(subject string, codec *goavro.Codec) (in
 	resp, err := client.httpCall("POST", fmt.Sprintf(subjectVersions, subject), payload)
 	if err != nil {
 		return 0, err
-	} else if !ok(resp) {
-		return 0, fmt.Errorf("non-ok return code found: %s", resp.Status)
 	}
 	return parseID(resp)
 }
@@ -147,10 +142,6 @@ func (client *HTTPClient) DeleteVersion(subject string, version int) error {
 	return err
 }
 
-func ok(resp *http.Response) bool {
-	return resp.StatusCode >= 200 && resp.StatusCode < 400
-}
-
 func parseSchema(resp *http.Response) (*schemaResponse, error) {
 	var schema = new(schemaResponse)
 	err := json.NewDecoder(resp.Body).Decode(&schema)
@@ -173,5 +164,12 @@ func (client HTTPClient) httpCall(method, uri string, payload io.Reader) (*http.
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", contentType)
 	resp, err := client.httpClient.Do(req)
+	if !ok(resp) {
+		return nil, newSchemaRegistryError(resp)
+	}
 	return resp, err
+}
+
+func ok(resp *http.Response) bool {
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }

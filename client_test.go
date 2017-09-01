@@ -129,7 +129,7 @@ func TestVersions(t *testing.T) {
 	}
 	httpClient.DeleteVersion(schemaName, 1)
 	responseCodec, err = httpClient.GetSchemaByVersion(schemaName, 1)
-	if nil != responseCodec || err == nil {
+	if nil != responseCodec || err.Error() != "40402 - Version not found." {
 		t.Fatalf("Found deleted version responseCodec: %v, error: %v", responseCodec, err)
 	}
 
