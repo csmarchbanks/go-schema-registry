@@ -90,6 +90,9 @@ func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goav
 	if nil != err {
 		return nil, err
 	}
+	if !ok(resp) {
+		return nil, fmt.Errorf("Non ok response - %d", resp.StatusCode)
+	}
 	bodyStr, _ := ioutil.ReadAll(resp.Body)
 	var schema = new(schemaVersionResponse)
 	err = json.Unmarshal(bodyStr, schema)
@@ -117,9 +120,30 @@ func (client *HTTPClient) CreateSubject(subject string, codec *goavro.Codec) (in
 	return parseID(resp)
 }
 
+// IsSchemaRegistered tests if the schema is registered, if so it returns the unique id of that schema
+func (client *HTTPClient) IsSchemaRegistered(subject string, codec *goavro.Codec) (int, error) {
+	schema := schemaResponse{codec.Schema()}
+	json, err := json.Marshal(schema)
+	if err != nil {
+		return 0, err
+	}
+	payload := bytes.NewBuffer(json)
+	resp, err := client.httpCall("POST", fmt.Sprintf(deleteSubject, subject), payload)
+	if err != nil {
+		return 0, err
+	}
+	return parseID(resp)
+}
+
 // DeleteSubject deletes a subject. It should only be used in development
 func (client *HTTPClient) DeleteSubject(subject string) error {
 	_, err := client.httpCall("DELETE", fmt.Sprintf(deleteSubject, subject), nil)
+	return err
+}
+
+// DeleteVersion deletes a subject. It should only be used in development
+func (client *HTTPClient) DeleteVersion(subject string, version int) error {
+	_, err := client.httpCall("DELETE", fmt.Sprintf(subjectByVersion, subject, version), nil)
 	return err
 }
 

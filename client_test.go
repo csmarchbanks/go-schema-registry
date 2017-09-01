@@ -90,7 +90,7 @@ func TestVersions(t *testing.T) {
 	codec, _ := createTestCodec()
 	httpClient := NewHTTPClient("http://localhost:8081")
 	schemaName := string(uuid.NewV4().String())
-	httpClient.CreateSubject(schemaName, codec)
+	id, _ := httpClient.CreateSubject(schemaName, codec)
 	schemaString := `
         {
           "type": "record",
@@ -119,6 +119,19 @@ func TestVersions(t *testing.T) {
 		t.Fatalf("Error getting schema by version: %v", err)
 	}
 	verifyCodecs(t, codec2, responseCodec)
+
+	idResponse, err := httpClient.IsSchemaRegistered(schemaName, codec)
+	if err != nil {
+		t.Fatalf("Error testing IsSchemaRegistered: %v", err)
+	}
+	if id != idResponse {
+		t.Fatalf("Ids did not match, expected: %d, got: %d", id, idResponse)
+	}
+	httpClient.DeleteVersion(schemaName, 1)
+	responseCodec, err = httpClient.GetSchemaByVersion(schemaName, 1)
+	if nil != responseCodec || err == nil {
+		t.Fatalf("Found deleted version responseCodec: %v, error: %v", responseCodec, err)
+	}
 
 	httpClient.DeleteSubject(schemaName)
 }
