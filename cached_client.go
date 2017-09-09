@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/karrick/goavro"
+	"github.com/linkedin/goavro"
 )
 
 type CachedClient struct {

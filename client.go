@@ -9,7 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 
-	"github.com/karrick/goavro"
+	"github.com/linkedin/goavro"
 )
 
 type Client interface {

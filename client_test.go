@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/karrick/goavro"
+	"github.com/linkedin/goavro"
 	uuid "github.com/satori/go.uuid"
 )
 
