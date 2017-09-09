@@ -58,13 +58,13 @@ const (
 )
 
 // NewHTTPClient creates a client to talk with the schema registry at the connect string
-func NewHTTPClient(connect []string) HTTPClient {
-	return HTTPClient{connect, http.DefaultClient, 0}
+func NewHTTPClient(connect []string) *HTTPClient {
+	return &HTTPClient{connect, http.DefaultClient, 0}
 }
 
 // NewHTTPClientWithRetries creates an http client with a configurable amount of retries on 5XX responses
-func NewHTTPClientWithRetries(connect []string, retries int) HTTPClient {
-	return HTTPClient{connect, http.DefaultClient, retries}
+func NewHTTPClientWithRetries(connect []string, retries int) *HTTPClient {
+	return &HTTPClient{connect, http.DefaultClient, retries}
 }
 
 // GetSchema returns a goavro.Codec by unique id

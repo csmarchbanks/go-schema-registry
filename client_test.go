@@ -32,55 +32,63 @@ func createTestCodec() (*goavro.Codec, error) {
         }`)
 }
 
-func TestCreateSubject(t *testing.T) {
+func testCreateSubjectInternal(t *testing.T, client Client) {
 	codec, err := createTestCodec()
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
-	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
-	id, err := httpClient.CreateSubject(schemaName, codec)
+	id, err := client.CreateSubject(schemaName, codec)
 	if nil != err {
 		t.Errorf("error creating schema %v", err)
 	}
-	subjects, err := httpClient.GetSubjects()
+	subjects, err := client.GetSubjects()
 	if !contains(subjects, schemaName) {
 		t.Errorf("Could not find subject in list of subjects after creating it")
 	}
-	schema, err := httpClient.GetSchema(id)
+	schema, err := client.GetSchema(id)
 	if nil != err {
 		t.Errorf("Did not get schema back %v", err)
 	}
 	if nil == schema {
 		t.Errorf("Something went wrong")
 	}
-	httpClient.DeleteSubject(schemaName)
+	client.DeleteSubject(schemaName)
 }
 
-func TestDeleteSubject(t *testing.T) {
+func TestCreateSubject(t *testing.T) {
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
+	testCreateSubjectInternal(t, httpClient)
+}
+
+func testDeleteSubjectInternal(t *testing.T, client Client) {
 	codec, err := createTestCodec()
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
-	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
-	_, err = httpClient.CreateSubject(schemaName, codec)
+	_, err = client.CreateSubject(schemaName, codec)
 	if nil != err {
 		t.Errorf("error creating schema %v", err)
 	}
-	subjects, err := httpClient.GetSubjects()
+	subjects, err := client.GetSubjects()
 	if !contains(subjects, schemaName) {
 		t.Errorf("Could not find subject in list of subjects after creating it")
 	}
-	err = httpClient.DeleteSubject(schemaName)
+	err = client.DeleteSubject(schemaName)
 	if nil != err {
 		t.Errorf("Error deleting subject: %v", err)
 	}
-	subjects, err = httpClient.GetSubjects()
+	subjects, err = client.GetSubjects()
 	if contains(subjects, schemaName) {
 		t.Errorf("Did not successfully delete subject")
 	}
-	httpClient.DeleteSubject(schemaName)
+	client.DeleteSubject(schemaName)
+}
+
+func TestDeleteSubject(t *testing.T) {
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
+	testDeleteSubjectInternal(t, httpClient)
 }
 
 func verifyCodecs(t *testing.T, codec1, codec2 *goavro.Codec) {
@@ -90,11 +98,10 @@ func verifyCodecs(t *testing.T, codec1, codec2 *goavro.Codec) {
 	}
 }
 
-func TestVersions(t *testing.T) {
+func testVersionsInternal(t *testing.T, client Client) {
 	codec, _ := createTestCodec()
-	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
-	id, _ := httpClient.CreateSubject(schemaName, codec)
+	id, _ := client.CreateSubject(schemaName, codec)
 	schemaString := `
         {
           "type": "record",
@@ -105,39 +112,44 @@ func TestVersions(t *testing.T) {
           ]
         }`
 	codec2, _ := goavro.NewCodec(schemaString)
-	httpClient.CreateSubject(schemaName, codec2)
-	versions, err := httpClient.GetVersions(schemaName)
+	client.CreateSubject(schemaName, codec2)
+	versions, err := client.GetVersions(schemaName)
 	if err != nil {
 		t.Fatalf("Error getting versions: %v", err)
 	}
 	if !reflect.DeepEqual(versions, []int{1, 2}) {
 		t.Fatalf("Versions were not 1 and 2, got: %v", versions)
 	}
-	responseCodec, err := httpClient.GetSchemaByVersion(schemaName, 1)
+	responseCodec, err := client.GetSchemaByVersion(schemaName, 1)
 	if err != nil {
 		t.Fatalf("Error getting schema by version: %v", err)
 	}
 	verifyCodecs(t, codec, responseCodec)
-	responseCodec, err = httpClient.GetSchemaByVersion(schemaName, 2)
+	responseCodec, err = client.GetSchemaByVersion(schemaName, 2)
 	if err != nil {
 		t.Fatalf("Error getting schema by version: %v", err)
 	}
 	verifyCodecs(t, codec2, responseCodec)
 
-	idResponse, err := httpClient.IsSchemaRegistered(schemaName, codec)
+	idResponse, err := client.IsSchemaRegistered(schemaName, codec)
 	if err != nil {
 		t.Fatalf("Error testing IsSchemaRegistered: %v", err)
 	}
 	if id != idResponse {
 		t.Fatalf("Ids did not match, expected: %d, got: %d", id, idResponse)
 	}
-	httpClient.DeleteVersion(schemaName, 1)
-	responseCodec, err = httpClient.GetSchemaByVersion(schemaName, 1)
+	client.DeleteVersion(schemaName, 1)
+	responseCodec, err = client.GetSchemaByVersion(schemaName, 1)
 	if nil != responseCodec || err.Error() != "40402 - Version not found." {
 		t.Fatalf("Found deleted version responseCodec: %v, error: %v", responseCodec, err)
 	}
 
-	httpClient.DeleteSubject(schemaName)
+	client.DeleteSubject(schemaName)
+}
+
+func TestVersions(t *testing.T) {
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
+	testVersionsInternal(t, httpClient)
 }
 
 func TestRetries(t *testing.T) {
