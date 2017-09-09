@@ -6,15 +6,28 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 
 	"github.com/karrick/goavro"
 )
 
+type Client interface {
+	GetSchema(int) (*goavro.Codec, error)
+	GetSubjects() ([]string, error)
+	GetVersions(string) ([]int, error)
+	GetSchemaByVersion(string, int) (*goavro.Codec, error)
+	CreateSubject(string, *goavro.Codec) (int, error)
+	IsSchemaRegistered(string, *goavro.Codec) (int, error)
+	DeleteSubject(string) error
+	DeleteVersion(string, int) error
+}
+
 // HTTPClient is a basic http client to interact with schema registry
 type HTTPClient struct {
-	SchemaRegistryConnect string
+	SchemaRegistryConnect []string
 	httpClient            *http.Client
+	retries               int
 }
 
 type schemaResponse struct {
@@ -45,8 +58,13 @@ const (
 )
 
 // NewHTTPClient creates a client to talk with the schema registry at the connect string
-func NewHTTPClient(connect string) HTTPClient {
-	return HTTPClient{connect, http.DefaultClient}
+func NewHTTPClient(connect []string) HTTPClient {
+	return HTTPClient{connect, http.DefaultClient, 0}
+}
+
+// NewHTTPClientWithRetries creates an http client with a configurable amount of retries on 5XX responses
+func NewHTTPClientWithRetries(connect []string, retries int) HTTPClient {
+	return HTTPClient{connect, http.DefaultClient, retries}
 }
 
 // GetSchema returns a goavro.Codec by unique id
@@ -69,7 +87,7 @@ func (client *HTTPClient) GetSubjects() ([]string, error) {
 		return []string{}, err
 	}
 	var result = []string{}
-	err = json.NewDecoder(resp.Body).Decode(&result)
+	err = json.Unmarshal(resp, &result)
 	return result, err
 }
 
@@ -80,7 +98,7 @@ func (client *HTTPClient) GetVersions(subject string) ([]int, error) {
 		return []int{}, err
 	}
 	var result = []int{}
-	err = json.NewDecoder(resp.Body).Decode(&result)
+	err = json.Unmarshal(resp, &result)
 	return result, err
 }
 
@@ -90,9 +108,8 @@ func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goav
 	if nil != err {
 		return nil, err
 	}
-	bodyStr, _ := ioutil.ReadAll(resp.Body)
 	var schema = new(schemaVersionResponse)
-	err = json.Unmarshal(bodyStr, schema)
+	err = json.Unmarshal(resp, &schema)
 	if nil != err {
 		return nil, err
 	}
@@ -142,32 +159,48 @@ func (client *HTTPClient) DeleteVersion(subject string, version int) error {
 	return err
 }
 
-func parseSchema(resp *http.Response) (*schemaResponse, error) {
+func parseSchema(str []byte) (*schemaResponse, error) {
 	var schema = new(schemaResponse)
-	err := json.NewDecoder(resp.Body).Decode(&schema)
+	err := json.Unmarshal(str, &schema)
 	return schema, err
 }
 
-func parseID(resp *http.Response) (int, error) {
+func parseID(str []byte) (int, error) {
 	var id = new(idResponse)
-	str, _ := ioutil.ReadAll(resp.Body)
-	err := json.Unmarshal(str, id)
+	err := json.Unmarshal(str, &id)
 	return id.ID, err
 }
 
-func (client HTTPClient) httpCall(method, uri string, payload io.Reader) (*http.Response, error) {
-	url := fmt.Sprintf("%s%s", client.SchemaRegistryConnect, uri)
-	req, err := http.NewRequest(method, url, payload)
-	if err != nil {
-		return nil, err
+func (client *HTTPClient) httpCall(method, uri string, payload io.Reader) ([]byte, error) {
+	nServers := len(client.SchemaRegistryConnect)
+	offset := rand.Intn(nServers)
+	for i := 0; ; i++ {
+		url := fmt.Sprintf("%s%s", client.SchemaRegistryConnect[(i+offset)%nServers], uri)
+		req, err := http.NewRequest(method, url, payload)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Accept", contentType)
+		resp, err := client.httpClient.Do(req)
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		if i < client.retries && (err != nil || retriable(resp)) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !ok(resp) {
+			return nil, newSchemaRegistryError(resp)
+		}
+		return ioutil.ReadAll(resp.Body)
 	}
-	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Accept", contentType)
-	resp, err := client.httpClient.Do(req)
-	if !ok(resp) {
-		return nil, newSchemaRegistryError(resp)
-	}
-	return resp, err
+}
+
+func retriable(resp *http.Response) bool {
+	return resp.StatusCode >= 500 && resp.StatusCode < 600
 }
 
 func ok(resp *http.Response) bool {

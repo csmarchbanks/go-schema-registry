@@ -1,6 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -33,7 +37,7 @@ func TestCreateSubject(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
-	httpClient := NewHTTPClient("http://localhost:8081")
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
 	id, err := httpClient.CreateSubject(schemaName, codec)
 	if nil != err {
@@ -58,7 +62,7 @@ func TestDeleteSubject(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not create codec %v", err)
 	}
-	httpClient := NewHTTPClient("http://localhost:8081")
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
 	_, err = httpClient.CreateSubject(schemaName, codec)
 	if nil != err {
@@ -88,7 +92,7 @@ func verifyCodecs(t *testing.T, codec1, codec2 *goavro.Codec) {
 
 func TestVersions(t *testing.T) {
 	codec, _ := createTestCodec()
-	httpClient := NewHTTPClient("http://localhost:8081")
+	httpClient := NewHTTPClient([]string{"http://localhost:8081"})
 	schemaName := string(uuid.NewV4().String())
 	id, _ := httpClient.CreateSubject(schemaName, codec)
 	schemaString := `
@@ -134,4 +138,31 @@ func TestVersions(t *testing.T) {
 	}
 
 	httpClient.DeleteSubject(schemaName)
+}
+
+func TestRetries(t *testing.T) {
+	count := 0
+	response := []string{"test"}
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		w.Header().Set("Content-Type", contentType)
+		if count < 3 {
+			http.Error(w, `{"error_code": 500, "message": "Error in the backend datastore"}`, 500)
+		} else {
+			str, _ := json.Marshal(response)
+			fmt.Fprintf(w, string(str))
+		}
+	}))
+	httpClient := NewHTTPClientWithRetries([]string{mockServer.URL}, 2)
+	subjects, err := httpClient.GetSubjects()
+	if err != nil {
+		t.Errorf("Found error %s", err)
+	}
+	if !reflect.DeepEqual(subjects, response) {
+		t.Errorf("Subjects did not match expected %s, got %s", response, subjects)
+	}
+	expectedCallCount := 3
+	if count != expectedCallCount {
+		t.Errorf("Expected error count to be %d, got %d", expectedCallCount, count)
+	}
 }
