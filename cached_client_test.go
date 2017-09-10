@@ -20,7 +20,13 @@ func TestCachedGetSchema(t *testing.T) {
 	}))
 	client := NewCachedClient([]string{mockServer.URL})
 	client.GetSchema(1)
-	client.GetSchema(1)
+	responseCodec, err := client.GetSchema(1)
+	if nil != err {
+		t.Errorf("Error getting schema: %s", err.Error())
+	}
+	if responseCodec.Schema() != codec.Schema() {
+		t.Errorf("Schemas do not match. Expected: %s, got: %s", codec.Schema(), responseCodec.Schema())
+	}
 	if count > 1 {
 		t.Errorf("Expected call count of 1, got %d", count)
 	}

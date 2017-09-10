@@ -122,26 +122,35 @@ func testVersionsInternal(t *testing.T, client Client) {
 	}
 	responseCodec, err := client.GetSchemaByVersion(schemaName, 1)
 	if err != nil {
-		t.Fatalf("Error getting schema by version: %v", err)
+		t.Fatalf("Error getting schema by version: %s", err.Error())
 	}
 	verifyCodecs(t, codec, responseCodec)
 	responseCodec, err = client.GetSchemaByVersion(schemaName, 2)
 	if err != nil {
-		t.Fatalf("Error getting schema by version: %v", err)
+		t.Fatalf("Error getting schema by version: %s", err.Error())
+	}
+	verifyCodecs(t, codec2, responseCodec)
+
+	responseCodec, err = client.GetLatestSchema(schemaName)
+	if err != nil {
+		t.Fatalf("Error getting latest schema: %s", err.Error())
 	}
 	verifyCodecs(t, codec2, responseCodec)
 
 	idResponse, err := client.IsSchemaRegistered(schemaName, codec)
 	if err != nil {
-		t.Fatalf("Error testing IsSchemaRegistered: %v", err)
+		t.Fatalf("Error testing IsSchemaRegistered: %s", err.Error())
 	}
 	if id != idResponse {
 		t.Fatalf("Ids did not match, expected: %d, got: %d", id, idResponse)
 	}
-	client.DeleteVersion(schemaName, 1)
+	err = client.DeleteVersion(schemaName, 1)
+	if err != nil {
+		t.Fatalf("Error deleting version: %s", err.Error())
+	}
 	responseCodec, err = client.GetSchemaByVersion(schemaName, 1)
 	if nil != responseCodec || err.Error() != "40402 - Version not found." {
-		t.Fatalf("Found deleted version responseCodec: %v, error: %v", responseCodec, err)
+		t.Fatalf("Found deleted version responseCodec: %v, error: %v", responseCodec.Schema(), err)
 	}
 
 	client.DeleteSubject(schemaName)

@@ -12,11 +12,13 @@ import (
 	"github.com/linkedin/goavro"
 )
 
+// Client defines the api for all clients interfacing with schema registry
 type Client interface {
 	GetSchema(int) (*goavro.Codec, error)
 	GetSubjects() ([]string, error)
 	GetVersions(string) ([]int, error)
 	GetSchemaByVersion(string, int) (*goavro.Codec, error)
+	GetLatestSchema(string) (*goavro.Codec, error)
 	CreateSubject(string, *goavro.Codec) (int, error)
 	IsSchemaRegistered(string, *goavro.Codec) (int, error)
 	DeleteSubject(string) error
@@ -50,7 +52,7 @@ const (
 	subjects         = "/subjects"
 	subjectVersions  = "/subjects/%s/versions"
 	deleteSubject    = "/subjects/%s"
-	subjectByVersion = "/subjects/%s/versions/%v"
+	subjectByVersion = "/subjects/%s/versions/%s"
 
 	latestVersion = "latest"
 
@@ -58,8 +60,10 @@ const (
 )
 
 // NewHTTPClient creates a client to talk with the schema registry at the connect string
+//
+// By default it will retry failed requests (5XX responses and http errors) len(connect) number of times
 func NewHTTPClient(connect []string) *HTTPClient {
-	return &HTTPClient{connect, http.DefaultClient, 0}
+	return &HTTPClient{connect, http.DefaultClient, len(connect)}
 }
 
 // NewHTTPClientWithRetries creates an http client with a configurable amount of retries on 5XX responses
@@ -102,8 +106,7 @@ func (client *HTTPClient) GetVersions(subject string) ([]int, error) {
 	return result, err
 }
 
-// GetSchemaByVersion returns a goavro.Codec for the version of the subject
-func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goavro.Codec, error) {
+func (client *HTTPClient) getSchemaByVersionInternal(subject string, version string) (*goavro.Codec, error) {
 	resp, err := client.httpCall("GET", fmt.Sprintf(subjectByVersion, subject, version), nil)
 	if nil != err {
 		return nil, err
@@ -115,6 +118,16 @@ func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goav
 	}
 
 	return goavro.NewCodec(schema.Schema)
+}
+
+// GetSchemaByVersion returns a goavro.Codec for the version of the subject
+func (client *HTTPClient) GetSchemaByVersion(subject string, version int) (*goavro.Codec, error) {
+	return client.getSchemaByVersionInternal(subject, fmt.Sprintf("%d", version))
+}
+
+// GetLatestSchema returns a goavro.Codec for the latest version of the subject
+func (client *HTTPClient) GetLatestSchema(subject string) (*goavro.Codec, error) {
+	return client.getSchemaByVersionInternal(subject, latestVersion)
 }
 
 // CreateSubject adds a schema to the subject
@@ -155,7 +168,7 @@ func (client *HTTPClient) DeleteSubject(subject string) error {
 
 // DeleteVersion deletes a subject. It should only be used in development
 func (client *HTTPClient) DeleteVersion(subject string, version int) error {
-	_, err := client.httpCall("DELETE", fmt.Sprintf(subjectByVersion, subject, version), nil)
+	_, err := client.httpCall("DELETE", fmt.Sprintf(subjectByVersion, subject, fmt.Sprintf("%d", version)), nil)
 	return err
 }
 

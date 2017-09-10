@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// SchemaRegistryError holds more detailed information about errors coming back from schema registry
 type SchemaRegistryError struct {
 	ErrorCode int    `json:"error_code"`
 	Message   string `json:"message"`
