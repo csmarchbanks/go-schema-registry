@@ -6,21 +6,21 @@ import (
 	"net/http"
 )
 
-// SchemaRegistryError holds more detailed information about errors coming back from schema registry
-type SchemaRegistryError struct {
+// Error holds more detailed information about errors coming back from schema registry
+type Error struct {
 	ErrorCode int    `json:"error_code"`
 	Message   string `json:"message"`
 }
 
-func (e *SchemaRegistryError) Error() string {
+func (e *Error) Error() string {
 	return fmt.Sprintf("%d - %s", e.ErrorCode, e.Message)
 }
 
-func newSchemaRegistryError(resp *http.Response) *SchemaRegistryError {
-	err := &SchemaRegistryError{}
+func newError(resp *http.Response) *Error {
+	err := &Error{}
 	parsingErr := json.NewDecoder(resp.Body).Decode(&err)
 	if parsingErr != nil {
-		return &SchemaRegistryError{resp.StatusCode, "Unrecognized error found"}
+		return &Error{resp.StatusCode, "Unrecognized error found"}
 	}
 	return err
 }

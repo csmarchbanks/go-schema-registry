@@ -206,7 +206,7 @@ func (client *HTTPClient) httpCall(method, uri string, payload io.Reader) ([]byt
 			return nil, err
 		}
 		if !ok(resp) {
-			return nil, newSchemaRegistryError(resp)
+			return nil, newError(resp)
 		}
 		return ioutil.ReadAll(resp.Body)
 	}
