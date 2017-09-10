@@ -1,25 +1,30 @@
 package main
 
 import (
+	"sync"
+
 	"github.com/linkedin/goavro"
 )
 
 type CachedClient struct {
-	httpClient  *HTTPClient
-	schemaCache map[int]*goavro.Codec
+	httpClient      *HTTPClient
+	schemaCache     map[int]*goavro.Codec
+	schemaCacheLock sync.RWMutex
 }
 
 func NewCachedClient(connect []string) *CachedClient {
 	httpClient := NewHTTPClient(connect)
-	return &CachedClient{httpClient, make(map[int]*goavro.Codec)}
+	return &CachedClient{httpClient: httpClient, schemaCache: make(map[int]*goavro.Codec)}
 }
 func NewCachedClientWithRetries(connect []string, retries int) *CachedClient {
 	httpClient := NewHTTPClientWithRetries(connect, retries)
-	return &CachedClient{httpClient, make(map[int]*goavro.Codec)}
+	return &CachedClient{httpClient: httpClient, schemaCache: make(map[int]*goavro.Codec)}
 }
 
 func (client *CachedClient) GetSchema(id int) (*goavro.Codec, error) {
+	client.schemaCacheLock.RLock()
 	cachedResult := client.schemaCache[id]
+	client.schemaCacheLock.RUnlock()
 	if nil != cachedResult {
 		return cachedResult, nil
 	}
@@ -27,7 +32,9 @@ func (client *CachedClient) GetSchema(id int) (*goavro.Codec, error) {
 	if err != nil {
 		return nil, err
 	}
+	client.schemaCacheLock.Lock()
 	client.schemaCache[id] = httpResult
+	client.schemaCacheLock.Unlock()
 	return httpResult, nil
 }
 
